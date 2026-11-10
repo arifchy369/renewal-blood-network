@@ -36,6 +36,7 @@ sys.path.insert(0, PARENT_DIR)
 import db
 
 ADMIN_DIR = os.path.dirname(os.path.abspath(__file__))
+ADMIN_TEMPLATES_DIR = os.path.join(ADMIN_DIR, 'templates')
 
 # ── Load .env helper from parent folder ───────────────────────
 env_file = os.path.join(PARENT_DIR, '.env')
@@ -99,7 +100,7 @@ if '--port' in sys.argv:
 
 HOST = os.environ.get('HOST', '0.0.0.0')
 
-app = Flask(__name__, static_folder=None)
+app = Flask(__name__, static_folder=None, template_folder=ADMIN_TEMPLATES_DIR)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 sock = Sock(app)
@@ -405,15 +406,15 @@ def serve_admin_static(path):
                 pass
         return send_from_directory(ADMIN_DIR, path)
 
-    # SPA Fallback to admin/index.html
-    index_path = os.path.join(ADMIN_DIR, 'index.html')
+    # SPA Fallback to admin/templates/index.html
+    index_path = os.path.join(ADMIN_TEMPLATES_DIR, 'index.html')
     if os.path.isfile(index_path):
         try:
             with open(index_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             return Response(process_html(content), mimetype='text/html; charset=utf-8')
         except Exception:
-            return send_from_directory(ADMIN_DIR, 'index.html')
+            return send_from_directory(ADMIN_TEMPLATES_DIR, 'index.html')
 
     return "<h1>404 — Admin File Not Found</h1>", 404
 

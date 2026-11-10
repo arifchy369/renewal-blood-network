@@ -34,6 +34,7 @@ import db
 
 # ── Load .env helper ──────────────────────────────────────────
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(ROOT_DIR, 'templates')
 env_file = os.path.join(ROOT_DIR, '.env')
 if os.path.isfile(env_file):
     with open(env_file, 'r', encoding='utf-8') as f:
@@ -173,7 +174,7 @@ if '--port' in sys.argv:
 
 HOST = os.environ.get('HOST', '0.0.0.0')
 
-app = Flask(__name__, static_folder=None)
+app = Flask(__name__, static_folder=None, template_folder=TEMPLATES_DIR)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 sock = Sock(app)
@@ -875,15 +876,15 @@ def serve_static(path):
                 pass
         return send_from_directory(ROOT_DIR, path)
 
-    # SPA Fallback: serve index.html with cache-busting
-    index_path = os.path.join(ROOT_DIR, 'index.html')
+    # SPA Fallback: serve templates/index.html with cache-busting
+    index_path = os.path.join(TEMPLATES_DIR, 'index.html')
     if os.path.isfile(index_path):
         try:
             with open(index_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             return Response(process_html(content), mimetype='text/html; charset=utf-8')
         except Exception:
-            return send_from_directory(ROOT_DIR, 'index.html')
+            return send_from_directory(TEMPLATES_DIR, 'index.html')
 
     return "<h1>404 — File Not Found</h1>", 404
 
