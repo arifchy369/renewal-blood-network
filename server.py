@@ -24,7 +24,7 @@ import sys
 import time
 import re
 from datetime import datetime, timezone
-from flask import Flask, request, jsonify, Response, send_from_directory
+from flask import Flask, request, jsonify, Response
 import json
 import threading
 import urllib.request
@@ -34,7 +34,8 @@ import db
 
 # ── Load .env helper ──────────────────────────────────────────
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATES_DIR = os.path.join(ROOT_DIR, 'templates')
+TEMPLATE_DIR = os.path.join(ROOT_DIR, 'templates')
+STATIC_DIR = os.path.join(ROOT_DIR, 'static')
 env_file = os.path.join(ROOT_DIR, '.env')
 if os.path.isfile(env_file):
     with open(env_file, 'r', encoding='utf-8') as f:
@@ -57,9 +58,9 @@ def get_turnstile_config():
                         os.environ[k.strip()] = v.strip().strip('"').strip("'")
         except Exception:
             pass
-    site_key = os.environ.get('CLOUDFLARE_TURNSTILE_SITE_KEY') or os.environ.get('TURNSTILE_SITE_KEY') or ''
-    secret_key = os.environ.get('CLOUDFLARE_TURNSTILE_SECRET_KEY') or os.environ.get('TURNSTILE_SECRET_KEY') or ''
-    enabled = os.environ.get('TURNSTILE_ENABLED', 'true').lower() in ('1', 'true', 'yes') and bool(site_key and secret_key)
+    site_key = os.environ.get('CLOUDFLARE_TURNSTILE_SITE_KEY') or os.environ.get('TURNSTILE_SITE_KEY') or '1x00000000000000000000AA'
+    secret_key = os.environ.get('CLOUDFLARE_TURNSTILE_SECRET_KEY') or os.environ.get('TURNSTILE_SECRET_KEY') or '1x0000000000000000000000000000000AA'
+    enabled = os.environ.get('TURNSTILE_ENABLED', 'true').lower() in ('1', 'true', 'yes')
     return site_key, secret_key, enabled
 
 def verify_turnstile(token, remote_ip=None):
@@ -95,6 +96,10 @@ def verify_turnstile(token, remote_ip=None):
             return False, "ক্যাপচা (Turnstile) যাচাই ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।"
     except Exception as e:
         print(f"[Turnstile] Error reaching Cloudflare: {e}")
+        # In offline local development with test keys, allow pass so dev workflow is not disrupted
+        if secret_key.startswith('1x00000000'):
+            print("[Turnstile] Offline dev mode fallback: passing test key.")
+            return True, ""
         return False, "ক্যাপচা সার্ভারের সাথে সংযোগ করা সম্ভব হয়নি।"
 
 # ── Google OAuth Configuration ────────────────────────────────
@@ -174,7 +179,7 @@ if '--port' in sys.argv:
 
 HOST = os.environ.get('HOST', '0.0.0.0')
 
-app = Flask(__name__, static_folder=None, template_folder=TEMPLATES_DIR)
+app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='/static', template_folder=TEMPLATE_DIR)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 sock = Sock(app)
@@ -818,7 +823,7 @@ def contacts_update(contact_id):
 # ═══════════════════════════════════════════════════════════════
 
 def get_file_hash(rel_path: str) -> str:
-    clean_rel = re.sub(r'^\.?/+', '', rel_path.split('?')[0])
+    clean_rel = re.sub(r'^/+', '', rel_path.split('?')[0])
     full_path = os.path.normpath(os.path.join(ROOT_DIR, clean_rel))
     try:
         if os.path.isfile(full_path):
@@ -828,17 +833,14 @@ def get_file_hash(rel_path: str) -> str:
     return hex(int(time.time()))[2:]
 
 def process_html(content: str) -> str:
-    # 1. Inject fresh file-hash query strings
+    # 1. Inject fresh file-hash query strings into /static/ asset URLs
     def replace_asset(match):
         attr = match.group(1)
-        raw_path = match.group(2)
-        clean_path = re.sub(r'^\.?/+', '', raw_path.split('?')[0])
-        h = get_file_hash(clean_path)
-        prefix = '/' if raw_path.startswith('/') else ''
-        return f'{attr}="{prefix}{clean_path}?v={h}"'
+        clean_path = match.group(2).split('?')[0]
+        return f'{attr}="{clean_path}?v={get_file_hash(clean_path)}"'
 
     transformed = re.sub(
-        r'(href|src)=["\'](\.?/?(?:css|js)/[^"\']+)["\']',
+        r'(href|src)=["\'](/static/[^"\']+)["\']',
         replace_asset,
         content,
         flags=re.IGNORECASE
@@ -856,37 +858,26 @@ def process_html(content: str) -> str:
 
     return transformed
 
+def render_page(name: str):
+    """Render an HTML page from templates/ with cache-busted static URLs."""
+    page_path = os.path.join(TEMPLATE_DIR, name)
+    try:
+        with open(page_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except OSError:
+        return "<h1>404 — File Not Found</h1>", 404
+    resp = Response(process_html(content), mimetype='text/html; charset=utf-8')
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
-def serve_static(path):
+def serve_index(path):
     # Reject unresolved /api/ routes
     if path.startswith('api/'):
         return jsonify({"error": "API route not found"}), 404
-
-    full_path = os.path.join(ROOT_DIR, path)
-
-    # If file exists and is not a directory
-    if path and os.path.isfile(full_path):
-        if path.endswith('.html'):
-            try:
-                with open(full_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                return Response(process_html(content), mimetype='text/html; charset=utf-8')
-            except Exception:
-                pass
-        return send_from_directory(ROOT_DIR, path)
-
-    # SPA Fallback: serve templates/index.html with cache-busting
-    index_path = os.path.join(TEMPLATES_DIR, 'index.html')
-    if os.path.isfile(index_path):
-        try:
-            with open(index_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return Response(process_html(content), mimetype='text/html; charset=utf-8')
-        except Exception:
-            return send_from_directory(TEMPLATES_DIR, 'index.html')
-
-    return "<h1>404 — File Not Found</h1>", 404
+    # Everything else (SPA routing) serves the single page template
+    return render_page('index.html')
 
 if __name__ == '__main__':
     local_url = f"http://localhost:{port}"

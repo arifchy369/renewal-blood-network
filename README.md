@@ -1,7 +1,7 @@
 <div align="center">
 
 <!-- 3D Gradient Hero Header (Repo-Hosted SVG — Zero External Proxy Dependency) -->
-<img src="assets/header.svg" width="100%" alt="Renewal Blood Network Banner" />
+<img src="static/assets/header.svg" width="100%" alt="Renewal Blood Network Banner" />
 
 <h3>🩸 রক্তের প্রয়োজনে, মানুষের পাশে &nbsp;•&nbsp; Real-Time Voluntary Blood Donor Network</h3>
 
@@ -63,20 +63,20 @@
 | **🔐 Google OAuth 2.0 & PIN Auth** | Seamless one-click Google Sign-In / account linking (`oauth_accounts`), paired with salted `scrypt` 4-digit PIN authentication and 30-day HTTP Bearer sessions. |
 | **🛡️ Cloudflare Turnstile Guard** | Bot protection enforced at Step 1 of Registration, Login, Emergency Request, Donor Contact Request, and Admin Authentication. |
 | **🏆 Trust Score & Leaderboard** | Automated trust score engine (`calc_trust_score`) based on verification levels (`0–4`), donation history, and zero-report standing, powering community leaderboards. |
-| **🛠️ Dedicated Admin Console** | Standalone management portal on port `8081` (`admin/`) to verify emergency blood requests, manage donor verification tiers, inspect suspicious flags, and review contact leads. |
+| **🛠️ Dedicated Admin Console** | Standalone management portal on port `8081` (`admin_server.py`) to verify emergency blood requests, manage donor verification tiers, inspect suspicious flags, and review contact leads. |
 
 ---
 
 ## 🏗️ System Architecture
 
-Both the **Public Web Server** (`server.py` on port `5500`) and the **Admin Dashboard Server** (`admin/server.py` on port `8081`) share the unified [`db.py`](db.py) MySQL/MariaDB data access layer and synchronize state in real time.
+Both the **Public Web Server** (`server.py` on port `5500`) and the **Admin Dashboard Server** (`admin_server.py` on port `8081`) share the unified [`db.py`](db.py) MySQL/MariaDB data access layer and synchronize state in real time.
 
 ```mermaid
 flowchart TD
     UserBrowser["Public Browser SPA (HTML5 / ES6 Modules)"] -->|HTTP REST & Static Assets| PublicAPI["Public Server - server.py (Port 5500)"]
     UserBrowser -->|WebSocket /ws/realtime| PublicAPI
 
-    AdminBrowser["Admin Panel SPA (admin/index.html)"] -->|Bearer Auth + Turnstile| AdminAPI["Admin Server - admin/server.py (Port 8081)"]
+    AdminBrowser["Admin Panel SPA (templates/admin.html)"] -->|Bearer Auth + Turnstile| AdminAPI["Admin Server - admin_server.py (Port 8081)"]
     AdminBrowser -->|WebSocket /ws/realtime| AdminAPI
 
     PublicAPI -->|Turnstile Siteverify| Cloudflare["Cloudflare Turnstile API"]
@@ -161,38 +161,24 @@ erDiagram
 <summary><b>📂 Click to expand Full Project Directory Structure</b></summary>
 
 ```text
-blood_bank_website/
+renewal-blood-network/
 ├── .env.example            # Safe environment configuration template
-├── assets/
-│   ├── header.svg          # 3D gradient hero SVG banner
-│   └── footer.svg          # Custom wave SVG footer
 ├── db.py                   # Pure MySQL/MariaDB driver, schema auto-init & data models
 ├── server.py               # Public REST API, WebSocket sync & SPA server (Port 5500)
+├── admin_server.py         # Admin REST API & SPA server (Port 8081)
 ├── requirements.txt        # Python dependencies (Flask, flask-sock, pymysql, cryptography)
-├── index.html              # Public Single-Page Application entry point
 ├── start-server.bat        # Windows launcher for Public Server
 ├── start-admin.bat         # Windows launcher for Admin Server
-├── css/
-│   ├── main.css            # Design tokens, variables & layout base
-│   ├── animations.css      # UI transitions & micro-animations
-│   ├── components.css      # Reusable cards, modals, wizard steps & badges
-│   └── pages.css           # Page-specific styling (map, dashboard, leaderboard)
-├── js/
-│   ├── app.js              # SPA router, auth modal, Google OAuth & global notifications
-│   ├── data.js             # REST & WebSocket client store with local session sync
-│   ├── donor.js            # 3-step registration wizard, search & donor contact modal
-│   ├── emergency.js        # Emergency request queue & submission wizard
-│   ├── dashboard.js        # Authenticated donor profile, availability & history editor
-│   ├── map.js              # Leaflet interactive donor map integration
-│   └── leaderboard.js      # Verified donor trust leaderboard
-└── admin/
-    ├── server.py           # Admin REST API & SPA server (Port 8081)
-    ├── index.html          # Admin Control Panel UI
-    ├── css/                # Admin stylesheet suite
-    └── js/
-        ├── app.js          # Admin SPA shell
-        ├── admin.js        # Moderation workflows, Turnstile verification & CRUD actions
-        └── data.js         # Admin authenticated API client
+├── templates/
+│   ├── index.html          # Public Single-Page Application entry point
+│   └── admin.html          # Admin Control Panel UI
+└── static/
+    ├── assets/             # header.svg, footer.svg
+    ├── css/                # Public stylesheets (main, animations, components, pages)
+    ├── js/                 # Public SPA scripts (app, data, donor, emergency, dashboard, map, leaderboard)
+    └── admin/
+        ├── css/            # Admin stylesheet suite
+        └── js/             # Admin scripts (app, admin, data)
 ```
 
 </details>
@@ -224,7 +210,7 @@ cp .env.example .env
 ```
 
 > [!TIP]
-> **Schema Auto-Initialization:** When either `server.py` or `admin/server.py` starts for the first time, [`db.py`](db.py) automatically calls `init_db()` to create all 7 tables, foreign keys, and performance indexes in MariaDB/MySQL.
+> **Schema Auto-Initialization:** When either `server.py` or `admin_server.py` starts for the first time, [`db.py`](db.py) automatically calls `init_db()` to create all 7 tables, foreign keys, and performance indexes in MariaDB/MySQL.
 
 <details>
 <summary><b>⚙️ Environment Variables Reference (<code>.env</code>)</b></summary>
@@ -238,8 +224,8 @@ cp .env.example .env
 | `DB_PASSWORD` | Database password *(keep strictly in `.env`)* | `your_database_password` |
 | `DB_NAME` | Target database schema name | `renewal_blood` |
 | `ADMIN_PASSWORD` | Admin panel login password *(Port `8081`)* | `your_admin_password` |
-| `CLOUDFLARE_TURNSTILE_SITE_KEY` | Public Cloudflare Turnstile Site Key | `your_turnstile_site_key` |
-| `CLOUDFLARE_TURNSTILE_SECRET_KEY` | Private Cloudflare Turnstile Secret Key | `your_turnstile_secret_key` |
+| `CLOUDFLARE_TURNSTILE_SITE_KEY` | Public Cloudflare Turnstile Site Key | `1x00000000000000000000AA` *(test)* |
+| `CLOUDFLARE_TURNSTILE_SECRET_KEY` | Private Cloudflare Turnstile Secret Key | `1x0000000000000000000000000000000AA` *(test)* |
 | `TURNSTILE_ENABLED` | Toggle Turnstile server-side validation | `true` |
 | `GOOGLE_CLIENT_ID` | Google OAuth 2.0 Web Client ID | `your-client-id.apps.googleusercontent.com` |
 | `GOOGLE_LOGIN_ENABLED` | Enable/disable Google Sign-In flow | `true` |
@@ -257,7 +243,7 @@ python server.py --port 5500
 Start the **Admin Dashboard Server** (http://localhost:8081) in another terminal:
 ```bash
 cd admin
-python server.py --port 8081
+python admin_server.py --port 8081
 # Or on Windows: start-admin.bat
 ```
 
@@ -317,6 +303,6 @@ python server.py --port 8081
 <div align="center">
 
 <!-- 3D Wave Footer (Repo-Hosted SVG) -->
-<img src="assets/footer.svg" width="100%" alt="Renewal Blood Network Footer" />
+<img src="static/assets/footer.svg" width="100%" alt="Renewal Blood Network Footer" />
 
 </div>
